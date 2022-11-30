@@ -1,18 +1,26 @@
 package actions
 
 import (
+	"fmt"
 	"net/http"
-	"sync"
+	"os"
+	"path"
+	"strings"
 
-	"detoxr/locales"
-	"detoxr/public"
+	"git.kilokb.com/jon/detoxr/dist"
 
 	"github.com/gobuffalo/buffalo"
 	"github.com/gobuffalo/envy"
+	"github.com/gobuffalo/logger"
 	csrf "github.com/gobuffalo/mw-csrf"
 	forcessl "github.com/gobuffalo/mw-forcessl"
 	i18n "github.com/gobuffalo/mw-i18n/v2"
 	paramlogger "github.com/gobuffalo/mw-paramlogger"
+	"github.com/gobuffalo/x/sessions"
+	"github.com/gorilla/handlers"
+	"github.com/pkg/errors"
+	"github.com/rs/cors"
+	"github.com/sirupsen/logrus"
 	"github.com/unrolled/secure"
 )
 
@@ -21,10 +29,27 @@ import (
 var ENV = envy.Get("GO_ENV", "development")
 
 var (
-	app     *buffalo.App
-	appOnce sync.Once
-	T       *i18n.Translator
+	app *buffalo.App
+	T   *i18n.Translator
 )
+
+var oooops = []byte("Something wrong. Please try again later.")
+
+func ooops(status int, err error, c buffalo.Context) error {
+	c.Logger().Error(errors.WithStack(err))
+	res := c.Response()
+	res.WriteHeader(status)
+	res.Write(oooops)
+	return nil
+}
+
+func JSONLogger(lvl logger.Level) logger.FieldLogger {
+	l := logrus.New()
+	l.Level = lvl
+	l.SetFormatter(&logrus.JSONFormatter{})
+	l.SetOutput(os.Stdout)
+	return logger.Logrus{FieldLogger: l}
+}
 
 // App is where all routes and middleware for buffalo
 // should be defined. This is the nerve center of your
@@ -40,11 +65,64 @@ var (
 // placed last in the route declarations, as it will prevent routes
 // declared after it to never be called.
 func App() *buffalo.App {
-	appOnce.Do(func() {
+	if app == nil {
+		cors := cors.New(cors.Options{
+			Debug: false,
+			AllowOriginFunc: func(origin string) bool {
+				return strings.HasSuffix(origin, "112mi.com")
+			},
+			AllowedMethods: []string{
+				http.MethodGet,
+				http.MethodPost,
+				http.MethodDelete,
+				http.MethodPut,
+				http.MethodHead,
+				http.MethodOptions,
+			},
+			AllowedHeaders:   []string{"*"},
+			AllowCredentials: true,
+		}).Handler
+
+		redisHost := os.Getenv("REDIS_HOST")
+		if redisHost == "" {
+			redisHost = ":6379"
+		}
+
+		/*
+			worker := gwa.New(gwa.Options{
+				Pool: &redis.Pool{
+					MaxActive: 5,
+					MaxIdle:   2,
+					Wait:      true,
+					Dial: func() (redis.Conn, error) {
+						return redis.Dial("tcp", redisHost)
+					},
+				},
+				Name:           "112mi",
+				MaxConcurrency: 500,
+			})
+		*/
+
+		var defaultLogger logger.FieldLogger
+
+		if ENV == "production" {
+			defaultLogger = JSONLogger(logger.InfoLevel)
+		} else {
+			defaultLogger = JSONLogger(logger.DebugLevel)
+		}
+
 		app = buffalo.New(buffalo.Options{
-			Env:         ENV,
-			SessionName: "_detoxr_session",
+			Env:           ENV,
+			SessionStore:  sessions.Null{},
+			CompressFiles: true,
+			PreWares:      []buffalo.PreWare{cors},
+			SessionName:   "_as",
+			Logger:        defaultLogger,
+			// Worker:        worker,
 		})
+
+		app.ErrorHandlers[405] = ooops
+		app.ErrorHandlers[500] = ooops
 
 		// Automatically redirect to SSL
 		app.Use(forceSSL())
@@ -56,27 +134,11 @@ func App() *buffalo.App {
 		// Remove to disable this.
 		app.Use(csrf.New)
 
-		// Setup and use translations:
-		app.Use(translations())
-
-		app.GET("/", HomeHandler)
-
-		app.ServeFiles("/", http.FS(public.FS())) // serve files from the public directory
-	})
+		// capture all to /index.html
+		app.Muxer().PathPrefix("/").Handler(pwaHandler(http.FS(dist.FS())))
+	}
 
 	return app
-}
-
-// translations will load locale files, set up the translator `actions.T`,
-// and will return a middleware to use to load the correct locale for each
-// request.
-// for more information: https://gobuffalo.io/en/docs/localization
-func translations() buffalo.MiddlewareFunc {
-	var err error
-	if T, err = i18n.New(locales.FS(), "en-US"); err != nil {
-		app.Stop(err)
-	}
-	return T.Middleware()
 }
 
 // forceSSL will return a middleware that will redirect an incoming request
@@ -89,4 +151,71 @@ func forceSSL() buffalo.MiddlewareFunc {
 		SSLRedirect:     ENV == "production",
 		SSLProxyHeaders: map[string]string{"X-Forwarded-Proto": "https"},
 	})
+}
+
+func pwaHandler(fs http.FileSystem) http.Handler {
+	fsh := http.FileServer(fs)
+	baseHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = strings.TrimSuffix(r.URL.Path, "/")
+		f, err := fs.Open(path.Clean(r.URL.Path))
+		if os.IsNotExist(err) {
+			f, _ = fs.Open("/")
+			r.URL.Path = "/"
+		}
+
+		stat, _ := f.Stat()
+		maxAge := envy.Get(buffalo.AssetsAgeVarName, "31536000")
+		w.Header().Add("ETag", fmt.Sprintf("%x", stat.ModTime().UnixNano()))
+		w.Header().Add("Cache-Control", fmt.Sprintf("max-age=%s", maxAge))
+		fsh.ServeHTTP(w, r)
+	})
+
+	return handlers.CompressHandler(baseHandler)
+}
+
+func invalidRequest(c buffalo.Context) error {
+	err := errors.New("invalid request")
+	c.Logger().Error(errors.WithStack(err).Error())
+	return errorResponse(c, InvalidRequest, err.Error())
+}
+
+// func serverError(c buffalo.Context) error {
+// 	err := errors.New("server error")
+// 	c.Logger().Error(errors.WithStack(err))
+// 	return errorResponse(c, ServerError, err.Error())
+// }
+
+func serverErrorWithShortMessage(c buffalo.Context, clientErr string, logErr any) error {
+	switch v := logErr.(type) {
+	case error:
+		c.Logger().Errorf("%s: %s", clientErr, errors.WithStack(v).Error())
+	case string:
+		c.Logger().Errorf("%s: %s", clientErr, errors.WithStack(errors.New(v)).Error())
+	default:
+		c.Logger().Errorf("%s: %+v \n %s", clientErr, logErr, errors.WithStack(errors.New(clientErr)).Error())
+	}
+	return errorResponse(c, ServerError, clientErr)
+}
+
+type response struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg,omitempty"`
+	Data any    `json:"data,omitempty"`
+}
+
+func errorResponse(c buffalo.Context, code int, msg string) error {
+	ret := response{
+		Code: code,
+		Msg:  msg,
+	}
+
+	return c.Render(http.StatusOK, r.JSON(ret))
+}
+
+func successResponse(c buffalo.Context, data any) error {
+	ret := response{
+		Code: SuccessResponse,
+		Data: data,
+	}
+	return c.Render(http.StatusOK, r.JSON(ret))
 }

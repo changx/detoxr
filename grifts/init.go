@@ -1,7 +1,7 @@
 package grifts
 
 import (
-	"detoxr/actions"
+	"git.kilokb.com/jon/detoxr/actions"
 
 	"github.com/gobuffalo/buffalo"
 )
