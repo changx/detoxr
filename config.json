@@ -1,0 +1,7 @@
+{
+    "honeypot":"202.12.27.33:53",
+    "fast_ns":["114.114.114.114:53", "223.5.5.5:53"],
+    "doh_service_url":"https://dns.google/resolve",
+    "ns_listen":":1053",
+    "web_listen":":3000"
+}

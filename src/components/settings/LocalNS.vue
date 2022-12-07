@@ -1,25 +1,32 @@
 <template>
-    <div class="grid grid-cols-1 gap-6 space-y-4">
-        <label class="block">
-            <span class="text-gray-700 block">Current Local NS</span>
-            <input type="text" disabled v-model="currentLocalNS" class="disabled bg-slate-50 mt-1 w-1/3 rounded-md border-gray-700 shadow-sm">
-        </label>
-        <label class="block">
-            <span class="text-gray-700 block">Local NS IP</span>
-            <div>
-                <input type="text" v-model="pendingLocalNS" class="mt-1 rounded-md border-gray-700 shadow-sm w-1/3">
-                <button @click="testPendingLocalNS"
-                    class="bg-blue-500 hover:bg-blue-600 px-5 active:bg-blue-700 py-2 ml-4 leading-5 text-base font-semibold text-white rounded-md">Test</button>
-                <button @click="savePendingLocalNS"
-                    class="bg-blue-500 hover:bg-blue-600 px-5 active:bg-blue-700 py-2 ml-4 leading-5 text-base font-semibold text-white rounded-md">Save</button>
+    <div class="grid grid-col-1 grid-flow-row space-y-6 w-[50%]">
+        <span class="text-gray-700 block">Current Local NS</span>
+        <template v-for="(ns, index) in currentLocalNS" :key="index">
+            <div class="flex justify-start">
+                <input type="text" v-model="currentLocalNS[index]"
+                    class="mb-1 w-1/2 rounded-md border-gray-700 shadow-sm block">
+                <button @click="removeNS(index)"
+                    class="block px-5 text-base font-semibold rounded-md text-slate-200">X</button>
             </div>
-        </label>
-        <p v-for="r in testResults" :key="r.host">
-            {{r.host}} ... {{r.return}}
-        </p>
-        <p v-if="allTestPassed" class="text-teal-600">All tests passed.</p>
-        <p v-if="localNSUpdated" class="text-teal-600">Local NS IP changed.</p>
+        </template>
+        <div class="flex ">
+            <button @click="addNS"
+                class="block bg-blue-500 hover:bg-blue-600 px-5 active:bg-blue-700 py-2 text-base font-semibold text-white rounded-md">Add</button>
+            <button @click="testNS"
+                class="block bg-blue-500 hover:bg-blue-600 px-5 active:bg-blue-700 py-2 ml-4 text-base font-semibold text-white rounded-md">Test</button>
+            <button @click="saveNS"
+                class="block bg-blue-500 hover:bg-blue-600 px-5 active:bg-blue-700 py-2 ml-4 text-base font-semibold text-white rounded-md">Save</button>
+        </div>
     </div>
+    <table class="border-0 border-collapse w-1/2 mt-6">
+        <tr v-for="r in testResults" :key="(r.host + r.server)">
+            <td>{{r.host}}</td>
+            <td>{{r.server}}</td>
+            <td>{{r.return}}</td>
+        </tr>
+    </table>
+    <p v-if="allTestPassed" class="text-teal-600">All tests passed.</p>
+    <p v-if="localNSUpdated" class="text-teal-600">Local NS IP changed.</p>
 </template>
 
 <script>
@@ -27,9 +34,8 @@ import axios from 'axios';
 export default {
     data() {
         return {
-            currentLocalNS: '',
-            pendingLocalNS: '',
-            shadowPendingLocalNS: '',
+            currentLocalNS: [],
+            shadowCurrentLocalNS: [],
             allTestPassed: false,
             localNSUpdated: false,
             testResults: [],
@@ -41,23 +47,23 @@ export default {
         }
     },
     methods: {
-        setShadowPendingLocalNS() {
-            if (!this.pendingLocalNS.endsWith(':53')) {
-                this.shadowPendingLocalNS = this.pendingLocalNS+ ':53';
-            } else {
-                this.shadowPendingLocalNS = this.pendingLocalNS;
-            }
-            this.allTestPassed = false;
+        async testNS() {
             this.localNSUpdated = false;
-        },
-        async testPendingLocalNS() {
-            this.setShadowPendingLocalNS();
+            this.allTestPassed = false;
             this.testResults = [];
+            this.shadowCurrentLocalNS = this.currentLocalNS.map((ns) => {
+                if (!ns.endsWith(':53')) {
+                    return ns + ':53';
+                }
+                return ns
+            });
 
             let tests = [];
             this.testDomains.map((h) => {
-                this.testResults.push({ host: h.host, return: '?', success: false });
-                tests.push(this.runTest(h));
+                this.shadowCurrentLocalNS.forEach((ns) => {
+                    this.testResults.push({ host: h.host, server: ns, return: '?', success: false });
+                    tests.push(this.runTest({ server: ns, host: h.host, shouldAnswer: h.shouldAnswer }));
+                })
             });
 
             return Promise.all(tests).then(() => {
@@ -80,36 +86,42 @@ export default {
         },
         async runTest(t) {
             return axios.post('/api/settings/local_ns/try',
-                { server: this.shadowPendingLocalNS, host: t.host }
+                { server: t.server, host: t.host }
             ).then((r) => {
                 this.testResults.map((s) => {
-                    if (s.host === r.data.data.host) {
+                    if (s.host === t.host && s.server === t.server) {
                         s.return = this.ok(t.shouldAnswer, r.data.data.error, r.data.data.answer);
                         s.success = s.return === 'ok';
                     }
                 });
             });
         },
-        savePendingLocalNS() {
-            this.testPendingLocalNS().then(() => {
+        saveNS() {
+            this.testNS().then(() => {
                 if (this.allTestPassed) {
                     axios.post('/api/settings/local_ns',
-                        { server: this.shadowPendingLocalNS}
+                        { servers: this.shadowCurrentLocalNS }
                     ).then(() => {
                         this.localNSUpdated = true;
-                        this.loadCurrentLocalNS();
+                        this.loadNS();
                     });
                 }
             });
         },
-        loadCurrentLocalNS() {
+        loadNS() {
             axios.get('/api/settings/local_ns').then((r) => {
-                this.currentLocalNS = r.data.data.server.replace(':53', '');
+                this.currentLocalNS = r.data.data.servers.map((ns) => ns.replace(':53', ''));
             })
+        },
+        addNS() {
+            this.currentLocalNS.push('');
+        },
+        removeNS(i) {
+            this.currentLocalNS.splice(i, 1);
         }
     },
     mounted() {
-        this.loadCurrentLocalNS();
+        this.loadNS();
     },
     unmounted() {
     }

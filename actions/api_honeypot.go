@@ -11,6 +11,7 @@ import (
 
 type SettingsQuery struct {
 	Server   string   `json:"server"`
+	Servers  []string `json:"servers"`
 	Host     string   `json:"host,omitempty"`
 	Response []string `json:"answer,omitempty"`
 	Error    string   `json:"error,omitempty"`

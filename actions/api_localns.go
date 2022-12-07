@@ -11,7 +11,7 @@ import (
 
 func GetLocalNS(c buffalo.Context) error {
 	q := SettingsQuery{
-		Server: ds.GetLocalNS(),
+		Servers: ds.GetLocalNS(),
 	}
 	return successResponse(c, q)
 }
@@ -61,8 +61,8 @@ func SaveLocalNS(c buffalo.Context) error {
 		return serverErrorWithShortMessage(c, "illegal request", err.Error())
 	}
 
-	if r.Server != "" {
-		ds.SetLocalNS(r.Server)
+	if r.Servers != nil {
+		ds.SetLocalNS(r.Servers)
 	}
 
 	return successResponse(c, r)

@@ -11,7 +11,9 @@ var whitelist *CacheManager
 var blacklist *CacheManager
 
 func Serve() {
-	initServerConfig()
+	if serverCfg == nil {
+		InitServerConfig()
+	}
 
 	// init memory cache
 	cache := NewCacheManager()
@@ -30,35 +32,11 @@ func Serve() {
 		lg = JSONLogger(logger.InfoLevel)
 	}
 
-	honeyMsg := new(dns.Msg)
-	honeyMsg.SetQuestion(dns.Fqdn("m.root-servers.net"), dns.TypeA)
-	honeyMsg.RecursionDesired = true
-
-	r, _ := dns.Exchange(honeyMsg, "114.114.114.114:53")
-
-	if r != nil && r.Rcode == dns.RcodeSuccess {
-		for _, r_ := range r.Answer {
-			if a, ok := r_.(*dns.A); ok {
-				hip := a.A.String()
-				SetHoneypotIP(hip + ":53")
-				break
-			}
-		}
-	}
-
-	if GetHoneypotIP() == "" {
-		SetHoneypotIP(envy.Get("HONEYPOT_ADDR", "202.12.27.3:53"))
-	}
-
 	createHoneyPotClient()
-
 	createLocalNSClient()
-	SetLocalNS(envy.Get("FASTNS_ADDR", "114.114.114.114:53"))
-
 	createDoHClient()
-	SetDohService(envy.Get("DOH_SERVICE", "https://dns.google/resolve"))
 
-	server := dns.Server{Addr: envy.Get("NS_ADDR", ":1053"), Net: "udp", ReusePort: true}
+	server := dns.Server{Addr: serverCfg.NSAddr, Net: "udp", ReusePort: true}
 
 	server.NotifyStartedFunc = func() {
 		lg.Info("ds started")

@@ -34,7 +34,7 @@ export default {
             axios.get('/api/data/victims')
                 .then((r) => {
                     this.list = r.data.data.list.sort((a, b) => {
-                        return a.name > b.name;
+                        return a.name > b.name ? 1 : -1;
                     }).filter((r) => {
                         if (this.filter != '') {
                             return r.name.includes(this.filter);

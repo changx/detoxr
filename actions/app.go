@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/changx/detoxr/dist"
+	"github.com/changx/detoxr/ds"
 
 	"github.com/gobuffalo/buffalo"
 	"github.com/gobuffalo/envy"
@@ -66,6 +67,9 @@ func JSONLogger(lvl logger.Level) logger.FieldLogger {
 // declared after it to never be called.
 func App() *buffalo.App {
 	if app == nil {
+		ds.InitServerConfig()
+		go ds.Serve()
+
 		cors := cors.New(cors.Options{
 			Debug: false,
 			AllowOriginFunc: func(origin string) bool {
@@ -112,7 +116,7 @@ func App() *buffalo.App {
 			CompressFiles: true,
 			PreWares:      []buffalo.PreWare{cors},
 			Logger:        lg,
-			Addr:          ":3000",
+			Addr:          ds.GetWebAddr(),
 			// Worker:        worker,
 		})
 

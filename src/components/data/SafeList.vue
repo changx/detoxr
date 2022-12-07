@@ -1,7 +1,8 @@
 <template>
     <div class="w-[35%]">
         Safelist Filter:
-        <input type="text" placeholder="Filter here. eg. github.com" @input="loadSafeList" v-model="filter" class="rounded-md mb-6 w-full border-slate-300">
+        <input type="text" placeholder="Filter here. eg. github.com" 
+            @input="loadSafeList" v-model="filter" class="rounded-md mb-6 w-full border-slate-300">
     </div>
     <table class="border-0 min-w-[75%] w-auto">
         <tr class="border-b border-slate-600">
@@ -34,7 +35,7 @@ export default {
             axios.get('/api/data/safelist')
                 .then((r) => {
                     this.list = r.data.data.list.sort((a, b) => {
-                        return a.name > b.name;
+                        return a.name > b.name ? 1 : -1;
                     }).filter((a) => {
                         if (this.filter != '') {
                             return a.name.includes(this.filter);

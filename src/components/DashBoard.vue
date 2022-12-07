@@ -7,7 +7,7 @@
                     <ul class="border-l border-slate-100 space-y-2 ">
                         <li v-for="(item, index) in menu.items" :key="index">
                             <router-link active-class="font-bold border-blue-500 text-blue-500"
-                                class="pl-4 py-2 -ml-px block border-l border-transparent hover:border-blue-500 border-slate-100 text-slate-700 hover:text-blue-500"
+                                class="pl-4 py-2 -ml-px block border-l border-transparent hover:border-blue-500 border-slate-100 hover:text-blue-500"
                                 :to="{ path: item.route }">{{ item.title }}</router-link>
                         </li>
                     </ul>
@@ -28,7 +28,6 @@ export default {
         {
           title: 'Data View',
           items: [
-            { title: 'Statistics', route: '/data/stats' },
             { title: 'Safe List', route: '/data/safelist' },
             { title: 'Victims', route: '/data/victims' }
           ]
