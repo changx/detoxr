@@ -54,17 +54,17 @@ export default {
             if (col === 'name') {
                 this.list.sort((a, b) => {
                     if (ascend) {
-                        return a.name > b.name;
+                        return a.name > b.name ? 1 : -1;
                     } else {
-                        return a.name < b.name;
+                        return a.name < b.name ? 1 : -1;
                     }
                 })
             } else if (col === 'ttl') {
                 this.list.sort((a, b) => {
                     if (ascend) {
-                        return a.ttl > b.ttl;
+                        return a.ttl > b.ttl ? 1 : -1;
                     } else {
-                        return a.ttl < b.ttl;
+                        return a.ttl < b.ttl ? 1 : -1;
                     }
                 })
             }
