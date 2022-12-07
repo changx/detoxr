@@ -114,14 +114,40 @@ func createDoHClient() {
 	}
 }
 
-func ResolveWithDoh(wg *sync.WaitGroup, rc chan *queryResult, m *dns.Msg) {
-	defer wg.Done()
+func toUint16(s string) uint16 {
+	x, _ := strconv.ParseUint(s, 10, 0)
+	return uint16(x)
+}
+
+func fillRRHeader(r *DohQueryAnswer, hdr *dns.RR_Header) {
+	switch r.Type {
+	case RR_A:
+		hdr.Rrtype = dns.TypeA
+	case RR_CNAME:
+		hdr.Rrtype = dns.TypeCNAME
+	case RR_SOA:
+		hdr.Rrtype = dns.TypeSOA
+	case RR_NS:
+		hdr.Rrtype = dns.TypeNS
+	case RR_MX:
+		hdr.Rrtype = dns.TypeMX
+	}
+	hdr.Rdlength = uint16(len(r.Data))
+	hdr.Class = dns.ClassINET
+	hdr.Ttl = uint32(r.TTL)
+	hdr.Name = r.Name
+}
+
+func ResolveWithDoh(wg *sync.WaitGroup, rc chan *queryResult, m *dns.Msg) *dns.Msg {
+	if wg != nil {
+		defer wg.Done()
+	}
 
 	params := url.Values{}
 	params.Add("name", m.Question[0].Name)
 	params.Add("type", fmt.Sprintf("%d", m.Question[0].Qtype))
 
-	req, _ := http.NewRequest(http.MethodGet, resolverConfig.dohService, nil)
+	req, _ := http.NewRequest(http.MethodGet, GetDohService(), nil)
 	req.URL.RawQuery = params.Encode()
 
 	answer := new(dns.Msg)
@@ -139,38 +165,23 @@ func ResolveWithDoh(wg *sync.WaitGroup, rc chan *queryResult, m *dns.Msg) {
 
 		json.Unmarshal(rbody, &dohMsg)
 
-		fmt.Printf("doh respond: \n%#v\n", dohMsg)
-
 		answer.SetReply(m)
 
 		for _, r := range dohMsg.Answers {
 			switch r.Type {
 			case RR_A:
 				a := new(dns.A)
-				a.Hdr.Rrtype = dns.TypeA
-				a.Hdr.Name = r.Name
-				a.Hdr.Ttl = uint32(r.TTL)
-				a.Hdr.Rdlength = uint16(len(r.Data))
-				a.Hdr.Class = dns.ClassINET
+				fillRRHeader(&r, &a.Hdr)
 				a.A = net.ParseIP(r.Data)
 				answer.Answer = append(answer.Answer, a)
 			case RR_CNAME:
 				a := new(dns.CNAME)
-				a.Hdr.Rrtype = dns.TypeCNAME
-				a.Hdr.Name = r.Name
-				a.Hdr.Ttl = uint32(r.TTL)
-				a.Hdr.Rdlength = uint16(len(r.Data))
-				a.Hdr.Class = dns.ClassINET
+				fillRRHeader(&r, &a.Hdr)
 				a.Target = r.Data
 				answer.Answer = append(answer.Answer, a)
 			case RR_MX:
 				a := new(dns.MX)
-				a.Hdr.Rrtype = dns.TypeMX
-				a.Hdr.Name = r.Name
-				a.Hdr.Ttl = uint32(r.TTL)
-				a.Hdr.Rdlength = uint16(len(r.Data))
-				a.Hdr.Class = dns.ClassINET
-
+				fillRRHeader(&r, &a.Hdr)
 				mx := strings.Split(r.Data, " ")
 				pref, _ := strconv.Atoi(mx[0])
 				a.Preference = uint16(pref)
@@ -178,28 +189,38 @@ func ResolveWithDoh(wg *sync.WaitGroup, rc chan *queryResult, m *dns.Msg) {
 				answer.Answer = append(answer.Answer, a)
 			case RR_NS:
 				a := new(dns.NS)
-				a.Hdr.Rrtype = dns.TypeNS
-				a.Hdr.Name = r.Name
-				a.Hdr.Ttl = uint32(r.TTL)
-				a.Hdr.Rdlength = uint16(len(r.Data))
-				a.Hdr.Class = dns.ClassINET
+				fillRRHeader(&r, &a.Hdr)
 				a.Ns = r.Data
 				answer.Answer = append(answer.Answer, a)
 			case RR_AAAA:
 				a := new(dns.AAAA)
-				a.Hdr.Rrtype = dns.TypeAAAA
-				a.Hdr.Name = r.Name
-				a.Hdr.Ttl = uint32(r.TTL)
-				a.Hdr.Rdlength = uint16(len(r.Data))
-				a.Hdr.Class = dns.ClassINET
+				fillRRHeader(&r, &a.Hdr)
 				a.AAAA = net.ParseIP(r.Data)
+				answer.Answer = append(answer.Answer, a)
+			case RR_SOA:
+				a := new(dns.SOA)
+				fillRRHeader(&r, &a.Hdr)
+				answer.Answer = append(answer.Answer, a)
+			case RR_SRV:
+				a := new(dns.SRV)
+				fillRRHeader(&r, &a.Hdr)
+
+				srvParts := strings.Split(r.Data, " ")
+				a.Priority = toUint16(srvParts[0])
+				a.Weight = toUint16(srvParts[1])
+				a.Port = toUint16(srvParts[2])
+				a.Target = srvParts[3]
+
 				answer.Answer = append(answer.Answer, a)
 			}
 		}
 	}
 
-	rc <- &queryResult{
-		QueryType: QueryTypeDoH,
-		Answer:    answer,
+	if rc != nil {
+		rc <- &queryResult{
+			QueryType: QueryTypeDoH,
+			Answer:    answer,
+		}
 	}
+	return answer
 }

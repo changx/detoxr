@@ -1,28 +1,45 @@
 package ds
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/miekg/dns"
 )
 
-const (
-	QueryTypeHoneyPot = iota
-	QueryTypeDoH
-	QueryTypeLocalNS
-)
+func initiateLocalQuery(m *dns.Msg, cache *CacheManager) *dns.Msg {
+	wg := &sync.WaitGroup{}
+	rch := make(chan *queryResult, 1)
+	defer close(rch)
+	wg.Add(1)
+	go ResolveWithLocalNS(wg, rch, m)
+	wg.Wait()
 
-type queryResult struct {
-	QueryType int
-	Answer    *dns.Msg
+	localNSResult := <-rch
+	cache.Set(localNSResult.Answer)
+	return localNSResult.Answer
 }
 
-func initiateQuery(m *dns.Msg, cache *cacheManager) *dns.Msg {
+func initiateDohQuery(m *dns.Msg, cache *CacheManager) *dns.Msg {
 	wg := &sync.WaitGroup{}
-	rch := make(chan *queryResult, 3)
+	rch := make(chan *queryResult, 1)
 	defer close(rch)
-	wg.Add(3)
+	wg.Add(1)
+	go ResolveWithDoh(wg, rch, m)
+	wg.Wait()
+
+	dohResult := <-rch
+	cache.Set(dohResult.Answer)
+	return dohResult.Answer
+}
+
+func initiateQuery(m *dns.Msg, cache *CacheManager, whitelist *CacheManager, blacklist *CacheManager) *dns.Msg {
+	wg := &sync.WaitGroup{}
+	rch := make(chan *queryResult, 6)
+	defer close(rch)
+	wg.Add(6)
+	go ResolveWithHoney(wg, rch, m)
+	go ResolveWithHoney(wg, rch, m)
+	go ResolveWithHoney(wg, rch, m)
 	go ResolveWithHoney(wg, rch, m)
 	go ResolveWithLocalNS(wg, rch, m)
 	go ResolveWithDoh(wg, rch, m)
@@ -30,28 +47,37 @@ func initiateQuery(m *dns.Msg, cache *cacheManager) *dns.Msg {
 
 	var r *queryResult
 	var dohResult *queryResult
-	var localResult *queryResult
-	var honeyPotResult *queryResult
+	var localNSResult *queryResult
 
-	for i := 0; i < 3; i++ {
+	score := 0
+
+	for i := 0; i < 6; i++ {
 		r = <-rch
 		switch r.QueryType {
 		case QueryTypeHoneyPot:
-			honeyPotResult = r
+			if r.Answer != nil {
+				score -= 1
+			} else {
+				score += 1
+			}
 		case QueryTypeDoH:
 			dohResult = r
 		case QueryTypeLocalNS:
-			localResult = r
+			localNSResult = r
 		}
 	}
 
-	if honeyPotResult.Answer != nil {
-		fmt.Printf("honeyPot got respond: \n%+v\n", honeyPotResult.Answer)
+	if score < 0 {
+		lg.Debugf("to blacklist: %s", m.Question[0].Name)
 		cache.Set(dohResult.Answer)
+		blacklist.SetWithTTL(m, 11800)
+		whitelist.Delete(m)
 		return dohResult.Answer
 	} else {
-		fmt.Printf("local ns respond: \n%+v\n", localResult.Answer)
-		cache.Set(localResult.Answer)
-		return localResult.Answer
+		lg.Debugf("to whitelist: %s", m.Question[0].Name)
+		cache.Set(localNSResult.Answer)
+		whitelist.SetWithTTL(m, 11800)
+		blacklist.Delete(m)
+		return localNSResult.Answer
 	}
 }

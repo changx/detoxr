@@ -1,5 +1,7 @@
 package ds
 
+import "github.com/miekg/dns"
+
 const (
 	RR_A          = 1 + iota   //1	a host address	[RFC1035]
 	RR_NS                      //2	an authoritative name server	[RFC1035]
@@ -89,3 +91,14 @@ const (
 	RR_DOA                     //259	Digital Object Architecture	[draft-durand-doa-over-dns]	DOA/doa-completed-template //2017-08-30
 	RR_AMTRELAY                //260	Automatic Multicast Tunneling Relay	[RFC8777]
 )
+
+const (
+	QueryTypeHoneyPot = iota
+	QueryTypeDoH
+	QueryTypeLocalNS
+)
+
+type queryResult struct {
+	QueryType int
+	Answer    *dns.Msg
+}

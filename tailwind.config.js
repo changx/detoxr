@@ -19,14 +19,18 @@ module.exports = {
       xl: '1440px',
     },
     colors: {
-      gray: colors.coolGray,
-      blue: colors.lightBlue,
+      gray: colors.gray,
+      blue: colors.sky,
       red: colors.rose,
       pink: colors.fuchsia,
+      teal: colors.teal,
+      white: colors.white,
+      black: colors.black,
+      slate: colors.slate
     },
     fontFamily: {
-      sans: ['Graphik', 'sans-serif'],
-      serif: ['Merriweather', 'serif'],
+      sans: ['sans-serif'],
+      serif: ['serif'],
     },
     extend: {
       spacing: {
@@ -38,5 +42,8 @@ module.exports = {
       }
     }
   },
-  plugins: [],
+  plugins: [
+    require('@tailwindcss/forms'), 
+    require('@tailwindcss/typography'),
+  ]
 }

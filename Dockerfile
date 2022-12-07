@@ -38,10 +38,10 @@ RUN apk add --no-cache ca-certificates
 WORKDIR /bin/
 
 COPY --from=builder /bin/app .
-COPY .env-prod /bin/.env
+COPY .env /bin/.env
 
 # Uncomment to run the binary in "production" mode:
-# ENV GO_ENV=production
+ENV GO_ENV=production
 
 # Bind the app to 0.0.0.0 so it can be seen from outside the container
 EXPOSE 3000

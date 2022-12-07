@@ -7,7 +7,7 @@ import (
 	"path"
 	"strings"
 
-	"git.kilokb.com/jon/detoxr/dist"
+	"github.com/changx/detoxr/dist"
 
 	"github.com/gobuffalo/buffalo"
 	"github.com/gobuffalo/envy"
@@ -69,7 +69,7 @@ func App() *buffalo.App {
 		cors := cors.New(cors.Options{
 			Debug: false,
 			AllowOriginFunc: func(origin string) bool {
-				return strings.HasSuffix(origin, "112mi.com")
+				return true
 			},
 			AllowedMethods: []string{
 				http.MethodGet,
@@ -83,32 +83,27 @@ func App() *buffalo.App {
 			AllowCredentials: true,
 		}).Handler
 
-		redisHost := os.Getenv("REDIS_HOST")
-		if redisHost == "" {
-			redisHost = ":6379"
-		}
+		// redisHost := envy.Get("REDIS_ADDR", ":6379")
 
-		/*
-			worker := gwa.New(gwa.Options{
-				Pool: &redis.Pool{
-					MaxActive: 5,
-					MaxIdle:   2,
-					Wait:      true,
-					Dial: func() (redis.Conn, error) {
-						return redis.Dial("tcp", redisHost)
-					},
-				},
-				Name:           "112mi",
-				MaxConcurrency: 500,
-			})
-		*/
+		// worker := gwa.New(gwa.Options{
+		// 	Pool: &redis.Pool{
+		// 		MaxActive: 5,
+		// 		MaxIdle:   2,
+		// 		Wait:      true,
+		// 		Dial: func() (redis.Conn, error) {
+		// 			return redis.Dial("tcp", redisHost)
+		// 		},
+		// 	},
+		// 	Name:           "112mi",
+		// 	MaxConcurrency: 500,
+		// })
 
-		var defaultLogger logger.FieldLogger
+		var lg logger.FieldLogger
 
 		if ENV == "production" {
-			defaultLogger = JSONLogger(logger.InfoLevel)
+			lg = JSONLogger(logger.InfoLevel)
 		} else {
-			defaultLogger = JSONLogger(logger.DebugLevel)
+			lg = JSONLogger(logger.DebugLevel)
 		}
 
 		app = buffalo.New(buffalo.Options{
@@ -116,8 +111,8 @@ func App() *buffalo.App {
 			SessionStore:  sessions.Null{},
 			CompressFiles: true,
 			PreWares:      []buffalo.PreWare{cors},
-			SessionName:   "_as",
-			Logger:        defaultLogger,
+			Logger:        lg,
+			Addr:          ":3000",
 			// Worker:        worker,
 		})
 
@@ -134,6 +129,20 @@ func App() *buffalo.App {
 		// Remove to disable this.
 		app.Use(csrf.New)
 
+		app.GET("/api/settings/honeypot", GetHoneypot)
+		app.POST("/api/settings/honeypot/try", TryHoneypot)
+		app.POST("/api/settings/honeypot", SaveHoneypot)
+
+		app.GET("/api/settings/local_ns", GetLocalNS)
+		app.POST("/api/settings/local_ns/try", TryLocalNS)
+		app.POST("/api/settings/local_ns", SaveLocalNS)
+
+		app.GET("/api/settings/doh_service", GetDoHServiceURL)
+		app.POST("/api/settings/doh_service/try", TryDoHServiceWithURL)
+		app.POST("/api/settings/doh_service", SaveDoHServiceURL)
+
+		app.GET("/api/data/safelist", GetSafelist)
+		app.GET("/api/data/victims", GetVictims)
 		// capture all to /index.html
 		app.Muxer().PathPrefix("/").Handler(pwaHandler(http.FS(dist.FS())))
 	}
@@ -178,12 +187,6 @@ func invalidRequest(c buffalo.Context) error {
 	c.Logger().Error(errors.WithStack(err).Error())
 	return errorResponse(c, InvalidRequest, err.Error())
 }
-
-// func serverError(c buffalo.Context) error {
-// 	err := errors.New("server error")
-// 	c.Logger().Error(errors.WithStack(err))
-// 	return errorResponse(c, ServerError, err.Error())
-// }
 
 func serverErrorWithShortMessage(c buffalo.Context, clientErr string, logErr any) error {
 	switch v := logErr.(type) {

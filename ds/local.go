@@ -17,22 +17,29 @@ func createLocalNSClient() {
 	}
 }
 
-func ResolveWithLocalNS(wg *sync.WaitGroup, rc chan *queryResult, m *dns.Msg) {
-	defer wg.Done()
+func ResolveWithLocalNS(wg *sync.WaitGroup, rc chan *queryResult, m *dns.Msg) *dns.Msg {
+	if wg != nil {
+		defer wg.Done()
+	}
 
-	in, _, err := localNSClient.Exchange(m, resolverConfig.localNS)
+	in, _, err := localNSClient.Exchange(m, GetLocalNS())
 
 	if in != nil && err == nil {
 		in.SetReply(m)
 	} else {
+		lg.Errorf("query local ns err: %s %s", m.String(), err.Error())
 		in = new(dns.Msg)
 		in.SetRcode(m, dns.RcodeNameError)
 	}
 
-	qs := queryResult{
-		QueryType: QueryTypeLocalNS,
-		Answer:    in,
+	if rc != nil {
+		qs := queryResult{
+			QueryType: QueryTypeLocalNS,
+			Answer:    in,
+		}
+
+		rc <- &qs
 	}
 
-	rc <- &qs
+	return in
 }

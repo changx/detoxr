@@ -1,7 +1,6 @@
 package ds
 
 import (
-	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -14,29 +13,44 @@ var honeyPotClient *dns.Client
 func createHoneyPotClient() {
 	honeyPotClient = new(dns.Client)
 	honeyPotClient.Dialer = &net.Dialer{
-		Timeout: 100 * time.Millisecond,
+		Timeout: 220 * time.Millisecond,
 	}
 }
 
-func ResolveWithHoney(wg *sync.WaitGroup, rc chan *queryResult, m *dns.Msg) {
-	defer wg.Done()
+func ResolveWithHoney(wg *sync.WaitGroup, rc chan *queryResult, m *dns.Msg) *dns.Msg {
+	if wg != nil {
+		defer wg.Done()
+	}
 
-	fmt.Printf("using honeyPot addr: %s\n", resolverConfig.honeypotIP)
-	in, _, err := honeyPotClient.Exchange(m, resolverConfig.honeypotIP)
+	in, _, err := honeyPotClient.Exchange(m, GetHoneypotIP())
 
-	answer := in
+	if err == nil && in != nil {
+		hit := false
+		for _, answer := range in.Answer {
+			lg.Debugf("honeypot ans: %+v", answer)
+			if answer.Header().Rrtype == dns.TypeA {
+				hit = true
+				break
+			}
+		}
 
-	fmt.Printf("honeyPot respond: \n%+v err = %+v\n", in, err)
-	if err == nil && answer != nil {
-		answer.SetReply(m)
+		if hit {
+			in.SetReply(m)
+		} else {
+			in = nil
+		}
 	} else {
-		answer = nil
+		in = nil
 	}
 
-	qr := queryResult{
-		QueryType: QueryTypeHoneyPot,
-		Answer:    answer,
+	if rc != nil {
+		qr := queryResult{
+			QueryType: QueryTypeHoneyPot,
+			Answer:    in,
+		}
+
+		rc <- &qr
 	}
 
-	rc <- &qr
+	return in
 }

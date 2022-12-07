@@ -1,4 +1,4 @@
-module git.kilokb.com/jon/detoxr
+module github.com/changx/detoxr
 
 go 1.18
 

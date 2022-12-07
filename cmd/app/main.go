@@ -3,8 +3,8 @@ package main
 import (
 	"log"
 
-	"git.kilokb.com/jon/detoxr/actions"
-	"git.kilokb.com/jon/detoxr/ds"
+	"github.com/changx/detoxr/actions"
+	"github.com/changx/detoxr/ds"
 )
 
 // main is the starting point for your Buffalo application.
