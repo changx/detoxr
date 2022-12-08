@@ -7,3 +7,7 @@
 ``` udp/1053 ```  name server port 
 
 ``` tcp/3000 ``` web admin http port
+
+作为 dnsmasq 上游的 forwarder ns，在 dnsmasq.conf 里配置
+
+```server=/#/127.0.0.1#1053```
