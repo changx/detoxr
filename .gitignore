@@ -32,3 +32,4 @@ generated/
 !.yarn/versions
 .env*
 config.json
+release
