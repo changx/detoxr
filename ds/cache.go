@@ -43,15 +43,18 @@ func (cache *CacheManager) Get(m *dns.Msg) *dns.Msg {
 	cache.locker.RLock()
 	defer cache.locker.RUnlock()
 	item_, ok := cache.store.Load(key)
+	lg.Infof("get cache with key: %s, item=%+v", key, item_)
 	if item_ == nil || !ok {
 		return nil
 	}
 	item := item_.(*CacheItem)
 	now := time.Now().Unix()
 	ttl := item.expire - now
-	if ttl > 0 {
-		for _, answer := range item.answer.Answer {
-			answer.Header().Ttl = uint32(ttl)
+	if ttl > 0 || item.expire < 0 {
+		if item.answer.Answer != nil {
+			for _, answer := range item.answer.Answer {
+				answer.Header().Ttl = uint32(ttl)
+			}
 		}
 		return item.answer
 	}
@@ -90,6 +93,18 @@ func (cache *CacheManager) SetWithTTL(m *dns.Msg, ttl int64) {
 	cache.store.Store(key, item)
 }
 
+func (cache *CacheManager) SetCacheWithKey(m *dns.Msg, ttl int64) {
+	item := &CacheItem{
+		answer: m,
+		expire: ttl,
+	}
+	cache.locker.Lock()
+	defer cache.locker.Unlock()
+	key := msgAsKey(m)
+	lg.Debugf("cache with key: %s", key)
+	cache.store.Store(key, item)
+}
+
 func (cache *CacheManager) Delete(m *dns.Msg) {
 	cache.locker.Lock()
 	defer cache.locker.Unlock()
@@ -104,7 +119,7 @@ func (cache *CacheManager) walkAndClean() {
 	keysToDelete := make([]string, 0)
 	cache.store.Range(func(key, value any) bool {
 		item := value.(*CacheItem)
-		if item.expire-now < 0 {
+		if item.expire > 0 && item.expire-now < 0 {
 			keysToDelete = append(keysToDelete, key.(string))
 		}
 		return true

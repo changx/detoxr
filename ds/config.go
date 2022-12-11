@@ -9,12 +9,13 @@ import (
 )
 
 type config struct {
-	HoneypotAddr string        `json:"honeypot"`
-	LocalNS      []string      `json:"fast_ns"`
-	DohService   string        `json:"doh_service_url"`
-	NSAddr       string        `json:"ns_listen"`
-	WebAddr      string        `json:"web_listen"`
-	locker       *sync.RWMutex `json:"-"`
+	HoneypotAddr        string        `json:"honeypot"`
+	LocalNS             []string      `json:"fast_ns"`
+	DohService          string        `json:"doh_service_url"`
+	NSAddr              string        `json:"ns_listen"`
+	WebAddr             string        `json:"web_listen"`
+	PersistentBlackList []string      `json:"persistent_blacklist"`
+	locker              *sync.RWMutex `json:"-"`
 }
 
 var serverCfg *config
@@ -51,6 +52,10 @@ func WriteConfigJson() {
 	if err == nil {
 		json.NewEncoder(writer).Encode(serverCfg)
 	}
+}
+
+func GetPersistentBlackList() []string {
+	return serverCfg.PersistentBlackList
 }
 
 func SetHoneypotIP(ip string) {

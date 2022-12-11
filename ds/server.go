@@ -36,6 +36,15 @@ func Serve() {
 	createLocalNSClient()
 	createDoHClient()
 
+	persistentBlackList := GetPersistentBlackList()
+	for i := 0; i < len(persistentBlackList); i++ {
+		m := new(dns.Msg)
+		m.SetQuestion(dns.Fqdn(persistentBlackList[i]), dns.TypeA)
+		m.Opcode = dns.OpcodeQuery
+		m.RecursionDesired = true
+		blacklist.SetCacheWithKey(m, -1)
+	}
+
 	server := dns.Server{Addr: serverCfg.NSAddr, Net: "udp", ReusePort: true}
 
 	server.NotifyStartedFunc = func() {
