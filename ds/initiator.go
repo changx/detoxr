@@ -36,22 +36,20 @@ func initiateQuery(m *dns.Msg, cache *CacheManager, whitelist *CacheManager, bla
 	wg := &sync.WaitGroup{}
 	rch := make(chan *queryResult, 6)
 	defer close(rch)
-	wg.Add(6)
+	wg.Add(5)
 	go ResolveWithHoney(wg, rch, m)
 	go ResolveWithHoney(wg, rch, m)
 	go ResolveWithHoney(wg, rch, m)
 	go ResolveWithHoney(wg, rch, m)
 	go ResolveWithLocalNS(wg, rch, m)
-	go ResolveWithDoh(wg, rch, m)
 	wg.Wait()
 
 	var r *queryResult
-	var dohResult *queryResult
 	var localNSResult *queryResult
 
 	score := 0
 
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 5; i++ {
 		r = <-rch
 		switch r.QueryType {
 		case QueryTypeHoneyPot:
@@ -60,8 +58,6 @@ func initiateQuery(m *dns.Msg, cache *CacheManager, whitelist *CacheManager, bla
 			} else {
 				score += 1
 			}
-		case QueryTypeDoH:
-			dohResult = r
 		case QueryTypeLocalNS:
 			localNSResult = r
 		}
@@ -69,10 +65,14 @@ func initiateQuery(m *dns.Msg, cache *CacheManager, whitelist *CacheManager, bla
 
 	if score < 0 {
 		lg.Debugf("to blacklist: %s", m.Question[0].Name)
-		cache.Set(dohResult.Answer)
 		blacklist.SetWithTTL(m, 11800)
 		whitelist.Delete(m)
-		return dohResult.Answer
+		wg.Add(1)
+		go ResolveWithDoh(wg, rch, m)
+		wg.Wait()
+		r = <-rch
+		cache.Set(r.Answer)
+		return r.Answer
 	} else {
 		lg.Debugf("to whitelist: %s", m.Question[0].Name)
 		cache.Set(localNSResult.Answer)

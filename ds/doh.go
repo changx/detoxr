@@ -214,6 +214,8 @@ func ResolveWithDoh(wg *sync.WaitGroup, rc chan *queryResult, m *dns.Msg) *dns.M
 				answer.Answer = append(answer.Answer, a)
 			}
 		}
+
+		lg.Debugf("doh answer: %s", answer.String())
 	}
 
 	if rc != nil {
