@@ -19,6 +19,9 @@ func GetSafelist(c buffalo.Context) error {
 			QType: dns.TypeToString[item.Answer().Question[0].Qtype],
 			TTL:   item.Expire() - now.Unix(),
 		}
+		if item.Expire() < 0 {
+			listItem.TTL = -999999
+		}
 		list = append(list, &listItem)
 		return true
 	})

@@ -13,7 +13,7 @@
         <tr v-for="item in list" :key="(item.name+item.qtype)" class="border-b border-slate-300">
             <td>{{item.name}}</td>
             <td>{{item.qtype}}</td>
-            <td>{{item.ttl}}</td>
+            <td>{{item.ttl == -999999 ? '∞' : item.ttl}}</td>
         </tr>
     </table>
 </template>
